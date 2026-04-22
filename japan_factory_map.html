@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>協力工場 担当エリアマップ</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Hiragino Sans','Meiryo',sans-serif;background:#f5f5f2;color:#1a1a1a;font-size:14px}
+
+#header{background:#fff;border-bottom:1px solid #e0e0d8;padding:10px 16px;display:flex;align-items:center;gap:10px;flex-shrink:0}
+#header h1{font-size:14px;font-weight:700}
+#header .user-info{font-size:12px;color:#888;margin-left:auto;display:flex;align-items:center;gap:8px}
+.badge{font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;background:#e8f4ec;color:#2d7a4a}
+.badge.saving{background:#fff8e0;color:#8a6500}
+.badge.error{background:#fff0f0;color:#a32d2d}
+.badge.synced{background:#e8f4ec;color:#2d7a4a}
+
+#main{display:flex;height:calc(100vh - 45px)}
+#map-col{flex:1;min-width:0;position:relative;background:#eaf3fb}
+#side-col{width:280px;flex-shrink:0;border-left:1px solid #e0e0d8;display:flex;flex-direction:column;background:#fff;overflow:hidden}
+#japan-svg{width:100%;height:100%;display:block}
+#tip{position:absolute;display:none;background:#fff;border:1px solid #ccc;border-radius:8px;padding:8px 13px;font-size:12px;color:#1a1a1a;pointer-events:none;z-index:20;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,0.1)}
+#tip strong{display:block;font-size:13px;font-weight:600;margin-bottom:3px}
+
+.tab-bar{display:flex;border-bottom:1px solid #e0e0d8;flex-shrink:0}
+.tab{flex:1;padding:11px 0;font-size:12px;font-weight:600;text-align:center;cursor:pointer;color:#888;border:none;background:none;border-bottom:2px solid transparent;transition:color 0.15s}
+.tab.active{color:#1a1a1a;border-bottom:2px solid #1a1a1a}
+.panel{display:none;flex:1;overflow-y:auto;padding:14px;flex-direction:column;gap:10px}
+.panel.active{display:flex}
+
+.factory-card{background:#f7f7f4;border-radius:8px;padding:10px 13px;display:flex;align-items:center;gap:9px;cursor:pointer;border:1.5px solid transparent;transition:border-color 0.12s}
+.factory-card:hover{background:#f0f0ec}
+.factory-card.selected{border-color:#1a1a1a;background:#fff}
+.color-dot{width:13px;height:13px;border-radius:50%;flex-shrink:0;border:1.5px solid rgba(0,0,0,0.15)}
+.fname{font-size:13px;font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fsub{font-size:11px;color:#888;margin-top:1px}
+
+.btn{padding:8px 12px;font-size:12px;font-weight:600;border-radius:7px;border:1px solid #d0d0c8;background:#fff;color:#1a1a1a;cursor:pointer;width:100%;transition:background 0.12s}
+.btn:hover{background:#f5f5f2}
+.btn-primary{background:#1a1a1a;color:#fff;border-color:#1a1a1a}
+.btn-primary:hover{background:#333}
+.btn-danger{border-color:#e0a0a0;color:#a32d2d}
+.btn-danger:hover{background:#fff0f0}
+
+.field-label{font-size:11px;color:#666;margin-bottom:4px;font-weight:600}
+input[type=text],select{width:100%;padding:7px 9px;font-size:13px;border:1px solid #d0d0c8;border-radius:7px;background:#fff;color:#1a1a1a;outline:none}
+input[type=text]:focus,select:focus{border-color:#888}
+.color-row{display:flex;gap:7px;flex-wrap:wrap;padding:4px 0}
+.color-swatch{width:26px;height:26px;border-radius:50%;cursor:pointer;border:3px solid transparent;transition:border-color 0.12s}
+.color-swatch.selected{border-color:#1a1a1a}
+
+.pref-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px}
+.pref-item{font-size:11px;padding:5px 4px;border-radius:5px;border:1px solid #e0e0d8;cursor:pointer;color:#666;user-select:none;text-align:center;transition:opacity 0.1s}
+.pref-item:hover{opacity:0.8}
+.pref-item.assigned{font-weight:600}
+
+.divider{height:1px;background:#e8e8e0;margin:2px 0}
+.section-title{font-size:10px;font-weight:700;color:#999;letter-spacing:0.08em;text-transform:uppercase}
+.info-box{font-size:12px;color:#666;line-height:1.7;background:#f7f7f4;border-radius:7px;padding:10px 12px}
+.info-box strong{color:#1a1a1a;font-weight:600}
+.legend{display:flex;flex-direction:column;gap:5px;padding:10px 14px;border-top:1px solid #e0e0d8;flex-shrink:0}
+.legend-item{display:flex;align-items:center;gap:7px;font-size:11px;color:#555}
+.no-item{font-size:13px;color:#999;padding:8px 0;text-align:center}
+
+#loading{position:fixed;inset:0;background:#f5f5f2;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;z-index:200}
+#loading p{font-size:13px;color:#888}
+.spinner{width:32px;height:32px;border:3px solid #e0e0d8;border-top-color:#1a1a1a;border-radius:50%;animation:spin 0.8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+
+<div id="loading">
+  <div class="spinner"></div>
+  <p>データを読み込み中...</p>
+</div>
+
+<div id="main-app" style="display:none;flex-direction:column;height:100vh">
+  <div id="header">
+    <h1>協力工場 担当エリアマップ</h1>
+    <div class="user-info">
+      <span id="save-badge" class="badge">保存済み</span>
+    </div>
+  </div>
+  <div id="main">
+    <div id="map-col">
+      <svg id="japan-svg" viewBox="0 0 860 760" preserveAspectRatio="xMidYMid meet"></svg>
+      <div id="tip"></div>
+    </div>
+    <div id="side-col">
+      <div class="tab-bar">
+        <button class="tab active" onclick="switchTab('factories')">工場一覧</button>
+        <button class="tab" onclick="switchTab('prefs')">担当県編集</button>
+      </div>
+      <div id="panel-factories" class="panel active"></div>
+      <div id="panel-prefs" class="panel"></div>
+      <div class="legend" id="legend"></div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js"></script>
+<script>
+
+/* ============================================================
+   ★ここにGoogle Apps ScriptのデプロイURLを貼り付けてください★
+   ============================================================ */
+const GAS_URL = https://script.google.com/macros/s/AKfycbxp8UrgyTF296zgkyGCs3iKpHxc12_SGx53Mu1BDskW4pnkQhHuUL1iYWPktrOE8Y-Tzg/exec;
+
+const FACTORY_COLORS = [
+  '#4A8FD4','#52A96E','#E07A45','#9B6DD4',
+  '#D45F8A','#4ABBB4','#C9A227','#D45A45',
+  '#6B9E3E','#4A7BAA','#C06090','#7ABACC'
+];
+const ALL_PREFS = [
+  ['01','北海道'],['02','青森県'],['03','岩手県'],['04','宮城県'],['05','秋田県'],['06','山形県'],['07','福島県'],
+  ['08','茨城県'],['09','栃木県'],['10','群馬県'],['11','埼玉県'],['12','千葉県'],['13','東京都'],['14','神奈川県'],
+  ['15','新潟県'],['16','富山県'],['17','石川県'],['18','福井県'],['19','山梨県'],['20','長野県'],['21','岐阜県'],
+  ['22','静岡県'],['23','愛知県'],['24','三重県'],['25','滋賀県'],['26','京都府'],['27','大阪府'],['28','兵庫県'],
+  ['29','奈良県'],['30','和歌山県'],['31','鳥取県'],['32','島根県'],['33','岡山県'],['34','広島県'],['35','山口県'],
+  ['36','徳島県'],['37','香川県'],['38','愛媛県'],['39','高知県'],['40','福岡県'],['41','佐賀県'],['42','長崎県'],
+  ['43','熊本県'],['44','大分県'],['45','宮崎県'],['46','鹿児島県'],['47','沖縄県']
+];
+const PREF_NAMES = Object.fromEntries(ALL_PREFS);
+
+let factories = [];
+let nextId = 1;
+let selectedFactoryId = null;
+let editMode = 'view';
+let prefCentroids = {};
+let svgReady = false;
+let saveTimer = null;
+let lastSaveTime = 0;
+
+/* ===================== GAS API ===================== */
+async function gasGet() {
+  const res = await fetch(GAS_URL + '?t=' + Date.now(), { cache: 'no-store' });
+  return res.json();
+}
+
+async function gasPost(data) {
+  await fetch(GAS_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain' },
+    body: JSON.stringify(data)
+  });
+}
+
+/* ===================== 初期ロード ===================== */
+async function init() {
+  try {
+    const data = await gasGet();
+    factories = data.factories || [];
+    nextId = data.nextId || (Math.max(0, ...factories.map(f=>f.id)) + 1);
+    lastSaveTime = Date.now();
+  } catch(e) {
+    alert('データの読み込みに失敗しました。GAS_URLを確認してください。\n' + e.message);
+  }
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('main-app').style.display = 'flex';
+  initMap();
+}
+
+/* ===================== 保存 ===================== */
+function scheduleSave() {
+  setSaveBadge('saving');
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(async () => {
+    try {
+      await gasPost({ factories, nextId });
+      lastSaveTime = Date.now();
+      setSaveBadge('saved');
+      saveTimer = null;
+    } catch(e) {
+      setSaveBadge('error');
+      saveTimer = null;
+    }
+  }, 1000);
+}
+
+/* 30秒ごとに最新データを取得して反映 */
+async function pollChanges() {
+  if (saveTimer) return;
+  try {
+    const data = await gasGet();
+    if (!data.factories) return;
+    factories = data.factories;
+    nextId = data.nextId || (Math.max(0, ...factories.map(f=>f.id)) + 1);
+    if (selectedFactoryId && !getFactoryById(selectedFactoryId)) {
+      selectedFactoryId = null; editMode = 'view';
+    }
+    renderMap(); renderFactoryPanel();
+    const activeTab = document.querySelector('.tab.active');
+    if (activeTab && activeTab.textContent.trim() === '担当県編集') renderPrefsPanel();
+    setSaveBadge('synced');
+    setTimeout(() => setSaveBadge('saved'), 2000);
+  } catch(e) {}
+}
+
+function setSaveBadge(state) {
+  const b = document.getElementById('save-badge');
+  if (state === 'saving') { b.className='badge saving'; b.textContent='保存中...'; }
+  else if (state === 'saved') { b.className='badge'; b.textContent='保存済み'; }
+  else if (state === 'synced') { b.className='badge synced'; b.textContent='データ更新'; }
+  else { b.className='badge error'; b.textContent='保存失敗'; }
+}
+
+/* ===================== マップ描画 ===================== */
+function getFactoryByPref(code) { return factories.find(f=>f.prefs.includes(code))||null; }
+function getFactoryById(id) { return factories.find(f=>f.id===id)||null; }
+function buildPrefMap() { const m={}; factories.forEach(f=>f.prefs.forEach(p=>m[p]=f)); return m; }
+function prefColor(code) { const f=getFactoryByPref(code); return f?f.color:'#d0cfc8'; }
+
+function renderMap() {
+  if (!svgReady) return;
+  const svg = d3.select('#japan-svg');
+  svg.selectAll('path.pref-path')
+    .attr('fill', d => prefColor(String(d.id)))
+    .attr('stroke', d => {
+      const sel = getFactoryById(selectedFactoryId);
+      return (sel && sel.prefCode === String(d.id)) ? '#222' : '#fff';
+    })
+    .attr('stroke-width', d => {
+      const sel = getFactoryById(selectedFactoryId);
+      return (sel && sel.prefCode === String(d.id)) ? 2.5 : 0.7;
+    });
+  renderFactoryPins();
+  renderLegend();
+}
+
+function renderFactoryPins() {
+  const svg = d3.select('#japan-svg');
+  svg.selectAll('.factory-pin-g').remove();
+  factories.forEach(f => {
+    const c = prefCentroids[f.prefCode];
+    if (!c) return;
+    const [x,y] = c;
+    const isSel = f.id === selectedFactoryId;
+    const r = isSel ? 12 : 9;
+    const g = svg.append('g').attr('class','factory-pin-g').style('cursor','pointer')
+      .on('click', () => selectFactory(f.id));
+    g.append('circle').attr('cx',x).attr('cy',y).attr('r',r)
+      .attr('fill',f.color).attr('stroke','#fff').attr('stroke-width',isSel?3:2);
+    g.append('circle').attr('cx',x).attr('cy',y).attr('r',isSel?4.5:3).attr('fill','#fff');
+    const short = f.name.replace('株式会社','㈱').replace('合同会社','（同）');
+    const lx = x > 580 ? x-r-5 : x+r+5;
+    const anchor = x > 580 ? 'end' : 'start';
+    const tw = short.length * 7 + 14;
+    const lbg = anchor==='end' ? lx-tw+7 : lx-7;
+    g.append('rect').attr('x',lbg).attr('y',y-21).attr('width',tw).attr('height',17)
+      .attr('fill','rgba(255,255,255,0.9)').attr('rx',3).attr('stroke',f.color).attr('stroke-width',0.8);
+    g.append('text').attr('x',lx).attr('y',y-9).attr('font-size',10.5)
+      .attr('fill','#111').attr('font-weight','600').attr('text-anchor',anchor)
+      .style('font-family','-apple-system,sans-serif').text(short);
+  });
+}
+
+function renderLegend() {
+  const el = document.getElementById('legend');
+  el.innerHTML = factories.map(f =>
+    `<div class="legend-item">
+      <span style="width:12px;height:12px;border-radius:50%;background:${f.color};flex-shrink:0;border:1.5px solid rgba(0,0,0,0.15)"></span>
+      <span>ID${f.id}：${f.name}（${f.prefs.length}県）</span>
+    </div>`
+  ).join('') + `<div class="legend-item">
+    <span style="width:12px;height:12px;border-radius:3px;background:#d0cfc8;flex-shrink:0"></span>
+    <span>担当工場なし</span></div>`;
+}
+
+function selectFactory(id) {
+  selectedFactoryId = (selectedFactoryId === id) ? null : id;
+  renderMap(); renderFactoryPanel();
+  if (document.querySelector('.tab.active').textContent.trim() === '担当県編集') renderPrefsPanel();
+}
+
+function switchTab(tab) {
+  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',['factories','prefs'][i]===tab));
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  document.getElementById('panel-'+tab).classList.add('active');
+  tab==='prefs' ? renderPrefsPanel() : renderFactoryPanel();
+}
+
+/* ===================== サイドパネル ===================== */
+function renderFactoryPanel() {
+  const el = document.getElementById('panel-factories');
+  const sel = getFactoryById(selectedFactoryId);
+  if (editMode==='edit-factory'&&sel) { renderEditFactory(el,sel); return; }
+  if (editMode==='add-factory') { renderAddFactory(el); return; }
+
+  let html = factories.length===0 ? '<div class="no-item">工場が登録されていません</div>' : '';
+  factories.forEach(f => {
+    const isSel = f.id===selectedFactoryId;
+    html += `<div class="factory-card${isSel?' selected':''}" onclick="selectFactory(${f.id})">
+      <span class="color-dot" style="background:${f.color}"></span>
+      <div style="flex:1;min-width:0">
+        <div class="fname">ID${f.id}：${f.name}</div>
+        <div class="fsub">${PREF_NAMES[f.prefCode]||f.prefCode} 所在・${f.prefs.length}県担当</div>
+      </div>
+    </div>`;
+  });
+  if (sel) {
+    html += `<div class="divider"></div>
+    <div class="info-box"><strong>ID${sel.id}：${sel.name}</strong><br>${sel.address}<br>所在：${PREF_NAMES[sel.prefCode]||sel.prefCode}　担当：${sel.prefs.length}県</div>
+    <button class="btn" onclick="editMode='edit-factory';renderFactoryPanel()">この工場を編集</button>
+    <button class="btn btn-danger" onclick="deleteFactory(${sel.id})">削除</button>`;
+  }
+  html += `<div style="flex:1"></div>
+  <button class="btn btn-primary" onclick="editMode='add-factory';renderFactoryPanel()">＋ 工場を追加</button>`;
+  el.innerHTML = html;
+}
+
+function swatchesHTML(groupId, selectedColor) {
+  return FACTORY_COLORS.map(c =>
+    `<span class="color-swatch${c===selectedColor?' selected':''}" style="background:${c}" data-color="${c}" onclick="pickColor('${groupId}',this)"></span>`
+  ).join('');
+}
+
+function renderEditFactory(el, f) {
+  el.innerHTML = `<div class="section-title">工場を編集</div>
+    <div><div class="field-label">会社名</div><input type="text" id="ef-name" value="${esc(f.name)}"></div>
+    <div><div class="field-label">住所</div><input type="text" id="ef-addr" value="${esc(f.address)}"></div>
+    <div><div class="field-label">工場所在都道府県</div>
+      <select id="ef-pref">${ALL_PREFS.map(([c,n])=>`<option value="${c}"${f.prefCode===c?' selected':''}>${n}</option>`).join('')}</select>
+    </div>
+    <div><div class="field-label">色</div><div class="color-row" id="ef-colors">${swatchesHTML('ef-colors',f.color)}</div></div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-primary" style="flex:1" onclick="saveEditFactory(${f.id})">保存</button>
+      <button class="btn" style="flex:1" onclick="editMode='view';renderFactoryPanel()">キャンセル</button>
+    </div>`;
+}
+
+function renderAddFactory(el) {
+  const defaultColor = FACTORY_COLORS[factories.length % FACTORY_COLORS.length];
+  el.innerHTML = `<div class="section-title">工場を追加</div>
+    <div><div class="field-label">会社名</div><input type="text" id="af-name" placeholder="例：〇〇株式会社"></div>
+    <div><div class="field-label">住所</div><input type="text" id="af-addr" placeholder="例：〇〇県〇〇市..."></div>
+    <div><div class="field-label">工場所在都道府県</div>
+      <select id="af-pref">${ALL_PREFS.map(([c,n])=>`<option value="${c}">${n}</option>`).join('')}</select>
+    </div>
+    <div><div class="field-label">色</div><div class="color-row" id="af-colors">${swatchesHTML('af-colors',defaultColor)}</div></div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-primary" style="flex:1" onclick="saveAddFactory()">追加</button>
+      <button class="btn" style="flex:1" onclick="editMode='view';renderFactoryPanel()">キャンセル</button>
+    </div>`;
+}
+
+function pickColor(groupId, el) {
+  document.querySelectorAll('#'+groupId+' .color-swatch').forEach(s=>s.classList.remove('selected'));
+  el.classList.add('selected');
+}
+function getPickedColor(groupId) {
+  const s = document.querySelector('#'+groupId+' .color-swatch.selected');
+  return s ? s.dataset.color : FACTORY_COLORS[0];
+}
+
+function saveEditFactory(id) {
+  const f = getFactoryById(id); if (!f) return;
+  const name = document.getElementById('ef-name').value.trim();
+  if (!name) { alert('会社名を入力してください'); return; }
+  f.name = name;
+  f.address = document.getElementById('ef-addr').value.trim();
+  f.prefCode = document.getElementById('ef-pref').value;
+  f.color = getPickedColor('ef-colors');
+  editMode = 'view'; scheduleSave(); renderMap(); renderFactoryPanel();
+}
+
+function saveAddFactory() {
+  const name = document.getElementById('af-name').value.trim();
+  if (!name) { alert('会社名を入力してください'); return; }
+  factories.push({ id:nextId++, name, address:document.getElementById('af-addr').value.trim(),
+    prefCode:document.getElementById('af-pref').value, color:getPickedColor('af-colors'), prefs:[] });
+  selectedFactoryId = factories[factories.length-1].id;
+  editMode = 'view'; scheduleSave(); renderMap(); renderFactoryPanel();
+}
+
+function deleteFactory(id) {
+  if (!confirm('この工場を削除しますか？')) return;
+  factories = factories.filter(f=>f.id!==id);
+  selectedFactoryId = null; editMode = 'view';
+  scheduleSave(); renderMap(); renderFactoryPanel();
+}
+
+function renderPrefsPanel() {
+  const el = document.getElementById('panel-prefs');
+  if (!selectedFactoryId) { el.innerHTML='<div class="no-item">工場一覧で工場を選択してください</div>'; return; }
+  const f = getFactoryById(selectedFactoryId); if (!f) { el.innerHTML=''; return; }
+  const prefMap = buildPrefMap();
+  let html = `<div style="font-size:12px;font-weight:600;margin-bottom:4px">${f.name}</div>
+  <div style="font-size:11px;color:#888;margin-bottom:10px">クリックで担当の追加・解除</div>
+  <div class="pref-grid">`;
+  ALL_PREFS.forEach(([code,name]) => {
+    const assigned = f.prefs.includes(code);
+    const other = !assigned && prefMap[code];
+    const bg = assigned ? f.color : (other ? other.color : '');
+    const tc = (assigned||other) ? '#fff' : '#555';
+    const op = other ? '0.45' : '1';
+    html += `<div class="pref-item${assigned?' assigned':''}"
+      style="background:${bg};color:${tc};opacity:${op};border-color:${assigned?f.color:'#e0e0d8'}"
+      onclick="togglePref('${code}',${f.id})"
+      title="${other?'ID'+other.id+'が担当中（クリックで移管）':''}"
+    >${name}${other?' ✕':''}</div>`;
+  });
+  html += `</div><div style="margin-top:10px;font-size:11px;color:#aaa">担当中：${f.prefs.length}県　｜　薄表示は他工場担当</div>`;
+  el.innerHTML = html;
+}
+
+function togglePref(code, factoryId) {
+  const f = getFactoryById(factoryId); if (!f) return;
+  const idx = f.prefs.indexOf(code);
+  if (idx >= 0) { f.prefs.splice(idx,1); }
+  else { factories.forEach(ff=>{ ff.prefs=ff.prefs.filter(p=>p!==code); }); f.prefs.push(code); }
+  scheduleSave(); renderMap(); renderPrefsPanel();
+}
+
+/* ===================== マップ初期化 ===================== */
+function initMap() {
+  const tip = document.getElementById('tip');
+  const mapCol = document.getElementById('map-col');
+  d3.json('https://unpkg.com/jpn-atlas@1.0.2/japan/japan.json').then(japan => {
+    const gpath = d3.geoPath();
+    const munis = japan.objects.municipalities;
+    const prefCodes = [...new Set(munis.geometries.map(g=>String(g.id).slice(0,2)))];
+    const prefFeatures = prefCodes.map(code => {
+      const geoms = munis.geometries.filter(g=>String(g.id).slice(0,2)===code);
+      const merged = topojson.merge(japan, geoms);
+      prefCentroids[code] = gpath.centroid({type:'Feature',geometry:merged});
+      return {type:'Feature',id:code,properties:{code},geometry:merged};
+    });
+    const svg = d3.select('#japan-svg');
+    svg.selectAll('path.pref-path').data(prefFeatures).join('path').attr('class','pref-path')
+      .attr('d',gpath).attr('fill',d=>prefColor(String(d.id))).attr('stroke','#fff').attr('stroke-width',0.7)
+      .on('mousemove',function(event,d){
+        const code=String(d.id); const f=getFactoryByPref(code);
+        const dot=f?`<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${f.color};margin-right:5px;vertical-align:middle"></span>`:'';
+        tip.style.display='block';
+        const rect=mapCol.getBoundingClientRect();
+        tip.style.left=Math.min(event.clientX-rect.left+14,mapCol.offsetWidth-250)+'px';
+        tip.style.top=Math.max(event.clientY-rect.top-14,4)+'px';
+        tip.innerHTML=`<strong>${PREF_NAMES[code]||code}</strong>${dot}${f?'工場ID'+f.id+'：'+f.name:'担当工場なし'}`;
+      })
+      .on('mouseleave',()=>{ tip.style.display='none'; })
+      .on('click',function(event,d){
+        const f=getFactoryByPref(String(d.id));
+        if(f){ selectFactory(f.id); switchTab('factories'); }
+      });
+    svgReady = true;
+    renderMap(); renderFactoryPanel();
+    setInterval(pollChanges, 30000);
+  });
+}
+
+function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
+
+init();
+</script>
+</body>
+</html>
